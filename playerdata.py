@@ -1,6 +1,7 @@
 import pandas as pd
 from faker import Faker
 import random
+import pyodbc
 
 # Initialize Faker
 fake = Faker()
@@ -37,7 +38,29 @@ def introduce_relationships(df, num_related=10000):
                 summary[attribute][related_attribute_value] += 1
     return df, summary
 
-# Main function to generate, relate data, and print summary
+# Function to write DataFrame to MSSQL
+def write_to_mssql(df, server, database, table, username, password):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+
+    # Create table if it doesn't exist
+    cursor.execute(f"IF OBJECT_ID('{table}', 'U') IS NULL CREATE TABLE {table} ("
+                   "name VARCHAR(255), "
+                   "surname VARCHAR(255), "
+                   "date_of_birth DATE, "
+                   "email VARCHAR(255), "
+                   "address VARCHAR(255))")
+
+    # Write data to table
+    for index, row in df.iterrows():
+        cursor.execute(f"INSERT INTO {table} (name, surname, date_of_birth, email, address) "
+                       "VALUES (?, ?, ?, ?, ?)", row["name"], row["surname"], row["date_of_birth"], row["email"], row["address"])
+
+    conn.commit()
+    conn.close()
+
+# Main function to generate, relate data, print summary, and write to MSSQL
 def main():
     num_records = 100000
     df = generate_data(num_records)
@@ -49,8 +72,8 @@ def main():
         for value, count in counts.items():
             print(f"  {value}: {count}")
         print()
-    # Optionally, you can save the DataFrame to a CSV or JSON file
-    df.to_csv("player_data.csv", index=False)
+    # Write DataFrame to MSSQL
+    write_to_mssql(df, server='your_server', database='your_database', table='your_table', username='your_username', password='your_password')
 
 if __name__ == "__main__":
     main()
