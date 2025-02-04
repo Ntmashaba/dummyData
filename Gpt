@@ -1,0 +1,39 @@
+CREATE PROCEDURE sp_GetAgentJobExecutionDetails
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Get job details along with last execution status and error message if any
+    SELECT 
+        j.job_id,
+        j.name AS JobName,
+        j.enabled AS IsEnabled,
+        ja.start_execution_date AS LastExecutionStart,
+        COALESCE(h.run_date, 0) AS LastRunDate,
+        COALESCE(h.run_time, 0) AS LastRunTime,
+        CASE 
+            WHEN h.run_status = 0 THEN 'Failed'
+            WHEN h.run_status = 1 THEN 'Succeeded'
+            WHEN h.run_status = 2 THEN 'Retry'
+            WHEN h.run_status = 3 THEN 'Canceled'
+            WHEN h.run_status = 4 THEN 'In Progress'
+            ELSE 'Unknown'
+        END AS LastRunStatus,
+        h.message AS LastErrorMessage
+    FROM msdb.dbo.sysjobs AS j
+    LEFT JOIN msdb.dbo.sysjobactivity AS ja 
+        ON j.job_id = ja.job_id
+        AND ja.start_execution_date = (
+            SELECT MAX(start_execution_date)
+            FROM msdb.dbo.sysjobactivity
+            WHERE job_id = j.job_id
+        )
+    LEFT JOIN msdb.dbo.sysjobhistory AS h
+        ON j.job_id = h.job_id
+        AND h.instance_id = (
+            SELECT MAX(instance_id)
+            FROM msdb.dbo.sysjobhistory
+            WHERE job_id = j.job_id
+        )
+    ORDER BY LastExecutionStart DESC;
+END;
