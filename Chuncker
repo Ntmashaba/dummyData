@@ -1,0 +1,54 @@
+DECLARE @SQLBase NVARCHAR(1000) = 'SELECT * FROM YourTable WHERE MemberNo IN (' -- Base query
+DECLARE @SQL NVARCHAR(4000)
+DECLARE @ChunkSize INT = 4000 - LEN(@SQLBase) - 2 -- Allow space for closing parentheses
+DECLARE @QueryIndex INT = 1
+
+-- Temporary table variable with an identity column
+DECLARE @TempNumbers TABLE (ID INT IDENTITY(1,1), MemberNo NVARCHAR(100))
+
+-- Insert MemberNo values into @TempNumbers
+INSERT INTO @TempNumbers (MemberNo)
+SELECT CAST(MemberNo AS NVARCHAR(100))
+FROM #Temp_MemberNo_List
+
+DECLARE @RowCount INT = (SELECT COUNT(*) FROM @TempNumbers)
+DECLARE @CurrentRow INT = 1
+DECLARE @MemberNoList NVARCHAR(3800) = ''
+DECLARE @MemberNo NVARCHAR(100)
+
+WHILE @CurrentRow <= @RowCount
+BEGIN
+    -- Get the next MemberNo
+    SELECT @MemberNo = MemberNo FROM @TempNumbers WHERE ID = @CurrentRow
+
+    -- Check if adding the next value exceeds the allowed chunk size
+    IF LEN(@MemberNoList) + LEN(@MemberNo) + 1 > @ChunkSize
+    BEGIN
+        -- Finalize and execute the current query
+        SET @SQL = @SQLBase + @MemberNoList + ')'
+        PRINT 'Executing Query ' + CAST(@QueryIndex AS NVARCHAR(10)) + ': ' + @SQL
+        EXEC sp_executesql @SQL
+        
+        -- Start a new batch
+        SET @QueryIndex = @QueryIndex + 1
+        SET @MemberNoList = @MemberNo
+    END
+    ELSE
+    BEGIN
+        -- Append to the current batch
+        IF @MemberNoList = ''
+            SET @MemberNoList = @MemberNo
+        ELSE
+            SET @MemberNoList = @MemberNoList + ',' + @MemberNo
+    END
+
+    SET @CurrentRow = @CurrentRow + 1
+END
+
+-- Execute the last batch if needed
+IF @MemberNoList <> ''
+BEGIN
+    SET @SQL = @SQLBase + @MemberNoList + ')'
+    PRINT 'Executing Query ' + CAST(@QueryIndex AS NVARCHAR(10)) + ': ' + @SQL
+    EXEC sp_executesql @SQL
+END
